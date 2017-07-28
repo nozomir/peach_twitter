@@ -14,31 +14,58 @@
 
 FeedParser = require('feedparser')
 request = require('request')
-feed = 'http://phiary.me/rss'
+Cron = require('cron').CronJob
+FEEDS = [
+  'http://www.publickey1.jp/atom.xml'
+  'http://FEEDS.feedburner.com/SdJapan?format=xml'
+  'http://techlife.cookpad.com/feed'
+  'http://developer.hatenastaff.com/feed'
+]
+
+items = []
 
 module.exports = (robot) ->
-  req = request(feed);
-  feedparser = new FeedParser({});
+  feedTech = ->
+    promises =
+      FEEDS.map (feed) ->
+        new Promise((resolve, reject) ->
+          request(feed)
+            .pipe(new FeedParser [])
+            .on('data', items.push.bind(items))
+            .on('end', resolve().bind(this))
+        )
 
-  items = [];
+    Promise.all(promises).then(() ->
+      robot.send(items.length)
+      items.forEach (item) ->
+        robot.send("[#{item.title}](#{item.link})")
+    ).then(() ->
+      if items.length
+        items = []
+    )
 
-  req.on 'response', (res) ->
-    this.pipe(feedparser)
+  new Cron('00 08 17 * * *', ->
+    robot.send('start cron')
+    promises =
+      FEEDS.map (feed) ->
+        new Promise((resolve, reject) ->
+          request(feed)
+            .pipe(new FeedParser [])
+            .on('data', items.push.bind(items))
+            .on('end', resolve().bind(this))
+        )
 
-  robot.respond /start/, (msg) ->
+    Promise.all(promises).then(() ->
+      robot.send(items.length)
+      items.forEach (item) ->
+        robot.send("[#{item.title}](#{item.link})")
+    ).then(() ->
+      if items.length
+        items = []
+    )
+  ).start()
 
-    msg.send 'start'
 
-    feedparser.on 'meta', (meta) ->
-      msg.send '==== %s ====', meta.title
-
-    feedparser.on 'readable', ->
-      while item = this.read()
-        items.push item
-
-    feedparser.on 'end', ->
-      for i, item of items
-        msg.send '- [' + item.title + ']' + '(' + item.link + ')'
 #
 #
 #  feedData =
